@@ -50,10 +50,11 @@ workflow PROTEIN_DESIGN {
                 
                 // Create a separate channel entry for each PDB file
                 pdb_list.collect { pdb_file ->
-                    def design_meta = [:]
-                    design_meta.id = "${meta.id}_${pdb_file.baseName}"
-                    design_meta.parent_id = meta.id
-                    design_meta.design_name = pdb_file.baseName
+                    def design_meta = [
+                        id: "${meta.id}_${pdb_file.baseName}",
+                        parent_id: meta.id,
+                        design_name: pdb_file.baseName
+                    ]
                     
                     [design_meta, pdb_file]
                 }
@@ -101,11 +102,12 @@ workflow PROTEIN_DESIGN {
                     
                     // Create a separate entry for each FASTA file
                     fasta_list.collect { fasta_file ->
-                        def seq_meta = [:]
-                        seq_meta.id = "${meta.id}_${fasta_file.baseName}"
-                        seq_meta.parent_id = meta.parent_id
-                        seq_meta.mpnn_parent_id = meta.id
-                        seq_meta.sequence_name = fasta_file.baseName
+                        def seq_meta = [
+                            id: "${meta.id}_${fasta_file.baseName}",
+                            parent_id: meta.parent_id,
+                            mpnn_parent_id: meta.id,
+                            sequence_name: fasta_file.baseName
+                        ]
                         
                         [seq_meta, fasta_file]
                     }
@@ -154,11 +156,12 @@ workflow PROTEIN_DESIGN {
                         def json_file = json_map[base_name]
                         
                         if (json_file) {
-                            def conversion_meta = [:]
-                            conversion_meta.id = "${meta.id}_${base_name}"
-                            conversion_meta.parent_id = meta.parent_id
-                            conversion_meta.mpnn_parent_id = meta.id
-                            conversion_meta.model_id = base_name
+                            def conversion_meta = [
+                                id: "${meta.id}_${base_name}",
+                                parent_id: meta.parent_id,
+                                mpnn_parent_id: meta.id,
+                                model_id: base_name
+                            ]
                             
                             [conversion_meta, json_file, cif_file]
                         } else {
@@ -210,11 +213,12 @@ workflow PROTEIN_DESIGN {
                     def npz_file = npz_map[base_name]
                     
                     if (npz_file) {
-                        def model_meta = [:]
-                        model_meta.id = "${meta.id}_${base_name}"
-                        model_meta.parent_id = meta.id
-                        model_meta.model_id = "${meta.id}_${base_name}"
-                        model_meta.source = "boltzgen"
+                        def model_meta = [
+                            id: "${meta.id}_${base_name}",
+                            parent_id: meta.id,
+                            model_id: "${meta.id}_${base_name}",
+                            source: "boltzgen"
+                        ]
                         
                         [model_meta, npz_file, cif_file]
                     } else {
@@ -267,10 +271,12 @@ workflow PROTEIN_DESIGN {
                 // Create a separate entry for each CIF file
                 cif_list.collect { cif_file ->
                     def base_name = cif_file.baseName
-                    def design_meta = [:]
-                    design_meta.id = "${meta.id}_${base_name}"
-                    design_meta.parent_id = meta.id
-                    design_meta.source = "boltzgen"
+                    // Create new meta map explicitly to avoid concurrent modification
+                    def design_meta = [
+                        id: "${meta.id}_${base_name}",
+                        parent_id: meta.id,
+                        source: "boltzgen"
+                    ]
                     
                     [design_meta, cif_file]
                 }
@@ -286,11 +292,13 @@ workflow PROTEIN_DESIGN {
                     // Create a separate entry for each CIF file
                     cif_list.collect { cif_file ->
                         def base_name = cif_file.baseName
-                        def design_meta = [:]
-                        design_meta.id = "${meta.id}_${base_name}_protenix"
-                        design_meta.parent_id = meta.parent_id  // Maintain link to original Boltzgen design
-                        design_meta.mpnn_parent_id = meta.id     // Track which ProteinMPNN design this came from
-                        design_meta.source = "protenix"
+                        // Create new meta map explicitly to avoid concurrent modification
+                        def design_meta = [
+                            id: "${meta.id}_${base_name}_protenix",
+                            parent_id: meta.parent_id,  // Maintain link to original Boltzgen design
+                            mpnn_parent_id: meta.id,     // Track which ProteinMPNN design this came from
+                            source: "protenix"
+                        ]
                         
                         [design_meta, cif_file]
                     }
@@ -331,10 +339,11 @@ workflow PROTEIN_DESIGN {
                 // Create a separate entry for each CIF file
                 cif_list.collect { cif_file ->
                     def base_name = cif_file.baseName
-                    def design_meta = [:]
-                    design_meta.id = "${meta.id}_${base_name}"
-                    design_meta.parent_id = meta.id
-                    design_meta.source = "boltzgen"
+                    def design_meta = [
+                        id: "${meta.id}_${base_name}",
+                        parent_id: meta.id,
+                        source: "boltzgen"
+                    ]
                     
                     [design_meta, cif_file]
                 }
@@ -353,11 +362,12 @@ workflow PROTEIN_DESIGN {
                     // Create a separate entry for each CIF file
                     cif_list.collect { cif_file ->
                         def base_name = cif_file.baseName
-                        def design_meta = [:]
-                        design_meta.id = "${meta.id}_${base_name}_protenix"
-                        design_meta.parent_id = meta.parent_id  // Link to original Boltzgen design
-                        design_meta.mpnn_parent_id = meta.id     // Track which ProteinMPNN design this came from
-                        design_meta.source = "protenix"
+                        def design_meta = [
+                            id: "${meta.id}_${base_name}_protenix",
+                            parent_id: meta.parent_id,  // Link to original Boltzgen design
+                            mpnn_parent_id: meta.id,     // Track which ProteinMPNN design this came from
+                            source: "protenix"
+                        ]
                         
                         [design_meta, cif_file]
                     }
