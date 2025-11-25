@@ -44,8 +44,8 @@ workflow PROTEIN_DESIGN {
         // Use flatMap to create individual tasks per PDB file (one per budget iteration)
         ch_pdb_per_design = CONVERT_CIF_TO_PDB.out.pdb_files_all
             .flatMap { meta, pdb_files ->
-                // Convert to list if single file
-                def pdb_list = pdb_files instanceof List ? pdb_files : [pdb_files]
+                // Convert to list if single file and create defensive copy
+                def pdb_list = pdb_files instanceof List ? new ArrayList(pdb_files) : [pdb_files]
                 
                 // Create a separate channel entry for each PDB file
                 pdb_list.collect { pdb_file ->
@@ -93,8 +93,8 @@ workflow PROTEIN_DESIGN {
             // Each ProteinMPNN run generates multiple FASTA files (mpnn_num_seq_per_target)
             ch_boltz2_per_sequence = PROTEINMPNN_OPTIMIZE.out.sequences
                 .flatMap { meta, fasta_files ->
-                    // Convert to list if single file
-                    def fasta_list = fasta_files instanceof List ? fasta_files : [fasta_files]
+                    // Convert to list if single file and create defensive copy
+                    def fasta_list = fasta_files instanceof List ? new ArrayList(fasta_files) : [fasta_files]
                     
                     // Create a separate entry for each FASTA file
                     fasta_list.collect { fasta_file ->
@@ -147,9 +147,9 @@ workflow PROTEIN_DESIGN {
         ch_ipsae_boltzgen = BOLTZGEN_RUN.out.budget_design_cifs
             .join(BOLTZGEN_RUN.out.budget_design_npz, by: 0)
             .flatMap { meta, cif_files, npz_files ->
-                // Convert to list if single file
-                def cif_list = cif_files instanceof List ? cif_files : [cif_files]
-                def npz_list = npz_files instanceof List ? npz_files : [npz_files]
+                // Convert to list if single file and create defensive copies
+                def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
+                def npz_list = npz_files instanceof List ? new ArrayList(npz_files) : [npz_files]
                 
                 // Create a map of basenames to files for quick lookup
                 def npz_map = [:]
@@ -244,8 +244,8 @@ workflow PROTEIN_DESIGN {
         // Strategy: Use flatMap to create individual tasks for each CIF file
         ch_prodigy_input = BOLTZGEN_RUN.out.budget_design_cifs
             .flatMap { meta, cif_files ->
-                // Convert to list if single file
-                def cif_list = cif_files instanceof List ? cif_files : [cif_files]
+                // Convert to list if single file and create defensive copy
+                def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
                 
                 // Create a separate entry for each CIF file
                 cif_list.collect { cif_file ->
@@ -265,8 +265,8 @@ workflow PROTEIN_DESIGN {
         if (params.run_proteinmpnn && params.run_boltz2_refold) {
             ch_prodigy_boltz2 = BOLTZ2_REFOLD.out.structures
                 .flatMap { meta, cif_files ->
-                    // Convert to list if single file
-                    def cif_list = cif_files instanceof List ? cif_files : [cif_files]
+                    // Convert to list if single file and create defensive copy
+                    def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
                     
                     // Create a separate entry for each CIF file
                     cif_list.collect { cif_file ->
@@ -312,12 +312,13 @@ workflow PROTEIN_DESIGN {
         // This searches for homologs of the original Boltzgen-designed structures
         ch_foldseek_boltzgen = BOLTZGEN_RUN.out.budget_design_cifs
             .flatMap { meta, cif_files ->
-                // Convert to list if single file
-                def cif_list = cif_files instanceof List ? cif_files : [cif_files]
+                // Convert to list if single file and create defensive copy
+                def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
                 
                 // Create a separate entry for each CIF file
                 cif_list.collect { cif_file ->
                     def base_name = cif_file.baseName
+                    // Create new meta map explicitly to avoid concurrent modification
                     def design_meta = [
                         id: "${meta.id}_${base_name}",
                         parent_id: meta.id,
@@ -335,8 +336,8 @@ workflow PROTEIN_DESIGN {
         if (params.run_proteinmpnn && params.run_boltz2_refold) {
             ch_foldseek_boltz2 = BOLTZ2_REFOLD.out.structures
                 .flatMap { meta, cif_files ->
-                    // Convert to list if single file
-                    def cif_list = cif_files instanceof List ? cif_files : [cif_files]
+                    // Convert to list if single file and create defensive copy
+                    def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
                     
                     // Create a separate entry for each CIF file
                     cif_list.collect { cif_file ->
