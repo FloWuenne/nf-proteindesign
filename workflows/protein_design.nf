@@ -395,28 +395,25 @@ workflow PROTEIN_DESIGN {
         ch_consolidate_script = Channel.fromPath("${projectDir}/assets/consolidate_design_metrics.py", checkIfExists: true)
         
         // Create a trigger channel that waits for all analyses to complete
+        // Collect all output channels that need to complete before consolidation
         // Start with Boltzgen results (always runs)
         ch_trigger = BOLTZGEN_RUN.out.results.collect()
         
         // Mix in other outputs based on what's enabled
         if (params.run_proteinmpnn) {
-            ch_trigger = ch_trigger
-                .concat(PROTEINMPNN_OPTIMIZE.out.optimized_designs.collect())
+            ch_trigger = ch_trigger.mix(PROTEINMPNN_OPTIMIZE.out.optimized_designs.collect())
         }
         
         if (params.run_ipsae) {
-            ch_trigger = ch_trigger
-                .concat(IPSAE_CALCULATE.out.scores.collect())
+            ch_trigger = ch_trigger.mix(IPSAE_CALCULATE.out.scores.collect())
         }
         
         if (params.run_prodigy) {
-            ch_trigger = ch_trigger
-                .concat(PRODIGY_PREDICT.out.summary.collect())
+            ch_trigger = ch_trigger.mix(PRODIGY_PREDICT.out.summary.collect())
         }
         
         if (params.run_foldseek) {
-            ch_trigger = ch_trigger
-                .concat(FOLDSEEK_SEARCH.out.summary.collect())
+            ch_trigger = ch_trigger.mix(FOLDSEEK_SEARCH.out.summary.collect())
         }
         
         // After all outputs are collected, create a single trigger
