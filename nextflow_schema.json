@@ -168,34 +168,51 @@
                 }
             }
         },
-        "protenix_options": {
-            "title": "Protenix structure prediction",
+        "boltz2_options": {
+            "title": "Boltz-2 structure prediction",
             "type": "object",
-            "description": "Options for Protenix multimer structure prediction of ProteinMPNN sequences.",
+            "description": "Options for Boltz-2 multimer structure prediction of ProteinMPNN sequences.",
             "default": "",
             "fa_icon": "fas fa-cube",
             "properties": {
-                "run_protenix_refold": {
+                "run_boltz2_refold": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable Protenix structure prediction for ProteinMPNN sequences.",
-                    "help_text": "Protenix predicts multimer structures combining ProteinMPNN-designed binders with target proteins. Requires run_proteinmpnn to be enabled.",
+                    "description": "Enable Boltz-2 structure prediction for ProteinMPNN sequences.",
+                    "help_text": "Boltz-2 predicts multimer structures combining ProteinMPNN-designed binders with target proteins. Requires run_proteinmpnn to be enabled.",
                     "fa_icon": "fas fa-toggle-on"
                 },
-                "protenix_diffusion_samples": {
+                "boltz2_num_diffusion": {
                     "type": "integer",
-                    "default": 1,
+                    "default": 200,
                     "description": "Number of diffusion samples per sequence (higher = more diversity).",
                     "help_text": "Multiple samples can capture structural diversity but increase computation time.",
                     "fa_icon": "fas fa-random",
                     "minimum": 1,
+                    "maximum": 1000
+                },
+                "boltz2_num_recycling": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Number of recycling iterations for structure refinement.",
+                    "help_text": "More recycling steps improve accuracy but increase computation time.",
+                    "fa_icon": "fas fa-recycle",
+                    "minimum": 1,
                     "maximum": 10
                 },
-                "protenix_seed": {
-                    "type": "integer",
-                    "default": 42,
-                    "description": "Random seed for reproducibility.",
-                    "fa_icon": "fas fa-random"
+                "boltz2_use_msa": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use multiple sequence alignments (MSAs) for prediction.",
+                    "help_text": "MSAs can improve accuracy but significantly increase runtime and memory requirements.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "boltz2_predict_affinity": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Predict binding affinity for protein complexes.",
+                    "help_text": "Enables ipSAE calculation using native Boltz-2 confidence scores.",
+                    "fa_icon": "fas fa-magnet"
                 }
             }
         },
@@ -242,7 +259,7 @@
                 "run_foldseek": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable Foldseek structural similarity search for budget designs and Protenix structures.",
+                    "description": "Enable Foldseek structural similarity search for budget designs and Boltz-2 structures.",
                     "help_text": "Foldseek searches for structurally similar proteins in databases (e.g., AlphaFold, Swiss-Model) to identify related structures. Runs in parallel with ipSAE and PRODIGY. GPU-accelerated for 4-27x speedup.",
                     "fa_icon": "fas fa-toggle-on"
                 },
@@ -410,7 +427,7 @@
             "$ref": "#/definitions/proteinmpnn_options"
         },
         {
-            "$ref": "#/definitions/protenix_options"
+            "$ref": "#/definitions/boltz2_options"
         },
         {
             "$ref": "#/definitions/analysis_options"

@@ -10,8 +10,7 @@ include { BOLTZGEN_RUN } from '../modules/local/boltzgen_run'
 include { CONVERT_CIF_TO_PDB } from '../modules/local/convert_cif_to_pdb'
 include { PROTEINMPNN_OPTIMIZE } from '../modules/local/proteinmpnn_optimize'
 include { EXTRACT_TARGET_SEQUENCES } from '../modules/local/extract_target_sequences'
-include { PROTENIX_REFOLD } from '../modules/local/protenix_refold'
-include { CONVERT_PROTENIX_TO_NPZ } from '../modules/local/convert_protenix_to_npz'
+include { BOLTZ2_REFOLD } from '../modules/local/boltz2_refold'
 include { IPSAE_CALCULATE } from '../modules/local/ipsae_calculate'
 include { PRODIGY_PREDICT } from '../modules/local/prodigy_predict'
 include { FOLDSEEK_SEARCH } from '../modules/local/foldseek_search'
@@ -77,7 +76,7 @@ workflow PROTEIN_DESIGN {
         // SOLUTION: Use ONLY the first budget design CIF (rank_1) to avoid naming collisions
         //           since the target sequence is identical across all designs for a sample
         // ====================================================================
-        if (params.run_protenix_refold) {
+        if (params.run_boltz2_refold) {
             // Extract target sequences from the FIRST budget design only
             // The target is the same across all designs, so we only need to extract it once
             ch_boltzgen_structures = BOLTZGEN_RUN.out.budget_design_cifs
@@ -90,9 +89,9 @@ workflow PROTEIN_DESIGN {
             
             EXTRACT_TARGET_SEQUENCES(ch_boltzgen_structures)
             
-            // Parallelize Protenix per FASTA file (one per ProteinMPNN sequence)
+            // Parallelize Boltz-2 per FASTA file (one per ProteinMPNN sequence)
             // Each ProteinMPNN run generates multiple FASTA files (mpnn_num_seq_per_target)
-            ch_protenix_per_sequence = PROTEINMPNN_OPTIMIZE.out.sequences
+            ch_boltz2_per_sequence = PROTEINMPNN_OPTIMIZE.out.sequences
                 .flatMap { meta, fasta_files ->
                     // Convert to list if single file
                     def fasta_list = fasta_files instanceof List ? fasta_files : [fasta_files]
@@ -121,55 +120,9 @@ workflow PROTEIN_DESIGN {
                     [meta, fasta, target_seq]
                 }
             
-            // Run Protenix structure prediction on each sequence individually
-            PROTENIX_REFOLD(ch_protenix_per_sequence)
-            
-            // ================================================================
-            // Step 4: Convert Protenix confidence JSON to NPZ for ipSAE
-            // ================================================================
-            // Prepare conversion script as a channel
-            ch_conversion_script = Channel.fromPath("${projectDir}/assets/convert_protenix_to_npz.py", checkIfExists: true)
-            
-            // Pair confidence JSON files with their corresponding CIF structures
-            // This runs in parallel with PRODIGY and feeds into IPSAE
-            ch_protenix_for_conversion = PROTENIX_REFOLD.out.structures
-                .join(PROTENIX_REFOLD.out.confidence, by: 0)
-                .flatMap { meta, cif_files, json_files ->
-                    // Convert to lists if single files
-                    def cif_list = cif_files instanceof List ? cif_files : [cif_files]
-                    def json_list = json_files instanceof List ? json_files : [json_files]
-                    
-                    // Create a map of basenames for matching
-                    def json_map = [:]
-                    json_list.each { json_file ->
-                        // Extract base name (without _confidence suffix if present)
-                        def base_name = json_file.baseName.replaceAll(/_confidence.*$/, '')
-                        json_map[base_name] = json_file
-                    }
-                    
-                    // Match CIF files with their JSON confidence files
-                    cif_list.collect { cif_file ->
-                        def base_name = cif_file.baseName
-                        def json_file = json_map[base_name]
-                        
-                        if (json_file) {
-                            def conversion_meta = [
-                                id: "${meta.id}_${base_name}",
-                                parent_id: meta.parent_id,
-                                mpnn_parent_id: meta.id,
-                                model_id: base_name
-                            ]
-                            
-                            [conversion_meta, json_file, cif_file]
-                        } else {
-                            log.warn "⚠️  No matching confidence JSON found for ${cif_file.name}"
-                            null
-                        }
-                    }.findAll { it != null }
-                }
-            
-            // Run conversion to NPZ format
-            CONVERT_PROTENIX_TO_NPZ(ch_protenix_for_conversion, ch_conversion_script)
+            // Run Boltz-2 structure prediction on each sequence individually
+            // NOTE: Boltz-2 outputs NPZ files natively - no conversion needed!
+            BOLTZ2_REFOLD(ch_boltz2_per_sequence)
         }
     } else {
         // Use Boltzgen outputs directly if ProteinMPNN is disabled
@@ -181,7 +134,7 @@ workflow PROTEIN_DESIGN {
     // ========================================================================
     // NOTE: IPSAE requires NPZ confidence files. We now support both:
     //   1. Boltzgen budget designs (native NPZ output)
-    //   2. Protenix refolded structures (converted from JSON to NPZ)
+    //   2. Boltz-2 refolded structures (native NPZ output - no conversion needed!)
     if (params.run_ipsae) {
         // Prepare IPSAE script as a channel
         ch_ipsae_script = Channel.fromPath("${projectDir}/assets/ipsae.py", checkIfExists: true)
@@ -226,26 +179,50 @@ workflow PROTEIN_DESIGN {
             }
         
         // ====================================================================
-        // Part 2: Process Protenix refolded structures (if enabled)
+        // Part 2: Process Boltz-2 refolded structures (if enabled)
         // ====================================================================
-        // Add Protenix NPZ files if Protenix refolding is enabled
-        if (params.run_proteinmpnn && params.run_protenix_refold) {
-            // Get NPZ and CIF pairs from the conversion step
-            ch_ipsae_protenix = CONVERT_PROTENIX_TO_NPZ.out.npz_with_cif
-                .map { meta, npz_file, cif_file ->
-                    // Add source tracking - create new meta map explicitly to avoid concurrent modification
-                    def ipsae_meta = [
-                        id: meta.id,
-                        parent_id: meta.parent_id,
-                        mpnn_parent_id: meta.mpnn_parent_id,
-                        model_id: meta.model_id,
-                        source: "protenix"
-                    ]
-                    [ipsae_meta, npz_file, cif_file]
+        // Add Boltz-2 NPZ files if Boltz-2 refolding is enabled
+        if (params.run_proteinmpnn && params.run_boltz2_refold) {
+            // Get NPZ and CIF pairs directly from Boltz-2 (native NPZ output!)
+            ch_ipsae_boltz2 = BOLTZ2_REFOLD.out.structures
+                .join(BOLTZ2_REFOLD.out.pae_npz, by: 0)
+                .flatMap { meta, cif_files, npz_files ->
+                    // Convert to lists if single files
+                    def cif_list = cif_files instanceof List ? cif_files : [cif_files]
+                    def npz_list = npz_files instanceof List ? npz_files : [npz_files]
+                    
+                    // Create a map of basenames for matching
+                    def npz_map = [:]
+                    npz_list.each { npz_file ->
+                        // Extract base name (without _pae suffix if present)
+                        def base_name = npz_file.baseName.replaceAll(/_pae.*$/, '')
+                        npz_map[base_name] = npz_file
+                    }
+                    
+                    // Match CIF files with their NPZ files
+                    cif_list.collect { cif_file ->
+                        def base_name = cif_file.baseName
+                        def npz_file = npz_map[base_name]
+                        
+                        if (npz_file) {
+                            def ipsae_meta = [
+                                id: "${meta.id}_${base_name}",
+                                parent_id: meta.parent_id,
+                                mpnn_parent_id: meta.mpnn_parent_id,
+                                model_id: base_name,
+                                source: "boltz2"
+                            ]
+                            
+                            [ipsae_meta, npz_file, cif_file]
+                        } else {
+                            log.warn "⚠️  No matching NPZ file found for ${cif_file.name}"
+                            null
+                        }
+                    }.findAll { it != null }
                 }
             
-            // Combine both Boltzgen and Protenix inputs
-            ch_ipsae_input = ch_ipsae_boltzgen.mix(ch_ipsae_protenix)
+            // Combine both Boltzgen and Boltz-2 inputs
+            ch_ipsae_input = ch_ipsae_boltzgen.mix(ch_ipsae_boltz2)
         } else {
             // Only Boltzgen inputs
             ch_ipsae_input = ch_ipsae_boltzgen
@@ -284,9 +261,9 @@ workflow PROTEIN_DESIGN {
                 }
             }
         
-        // Add Protenix-refolded structures if available
-        if (params.run_proteinmpnn && params.run_protenix_refold) {
-            ch_prodigy_protenix = PROTENIX_REFOLD.out.structures
+        // Add Boltz-2-refolded structures if available
+        if (params.run_proteinmpnn && params.run_boltz2_refold) {
+            ch_prodigy_boltz2 = BOLTZ2_REFOLD.out.structures
                 .flatMap { meta, cif_files ->
                     // Convert to list if single file
                     def cif_list = cif_files instanceof List ? cif_files : [cif_files]
@@ -296,10 +273,10 @@ workflow PROTEIN_DESIGN {
                         def base_name = cif_file.baseName
                         // Create new meta map explicitly to avoid concurrent modification
                         def design_meta = [
-                            id: "${meta.id}_${base_name}_protenix",
+                            id: "${meta.id}_${base_name}_boltz2",
                             parent_id: meta.parent_id,  // Maintain link to original Boltzgen design
                             mpnn_parent_id: meta.id,     // Track which ProteinMPNN design this came from
-                            source: "protenix"
+                            source: "boltz2"
                         ]
                         
                         [design_meta, cif_file]
@@ -307,10 +284,10 @@ workflow PROTEIN_DESIGN {
                 }
             
             // Combine both sources
-            ch_prodigy_input = ch_prodigy_input.mix(ch_prodigy_protenix)
+            ch_prodigy_input = ch_prodigy_input.mix(ch_prodigy_boltz2)
         }
         
-        // Run PRODIGY binding affinity prediction for all CIF files (Boltzgen + Protenix)
+        // Run PRODIGY binding affinity prediction for all CIF files (Boltzgen + Boltz-2)
         PRODIGY_PREDICT(ch_prodigy_input, ch_prodigy_script)
     }
     
@@ -352,11 +329,11 @@ workflow PROTEIN_DESIGN {
             }
         
         // ====================================================================
-        // Part 2: Add Protenix refolded structures (if enabled)
+        // Part 2: Add Boltz-2 refolded structures (if enabled)
         // ====================================================================
-        // Search for homologs of the Protenix refolded structures with MPNN sequences
-        if (params.run_proteinmpnn && params.run_protenix_refold) {
-            ch_foldseek_protenix = PROTENIX_REFOLD.out.structures
+        // Search for homologs of the Boltz-2 refolded structures with MPNN sequences
+        if (params.run_proteinmpnn && params.run_boltz2_refold) {
+            ch_foldseek_boltz2 = BOLTZ2_REFOLD.out.structures
                 .flatMap { meta, cif_files ->
                     // Convert to list if single file
                     def cif_list = cif_files instanceof List ? cif_files : [cif_files]
@@ -365,24 +342,24 @@ workflow PROTEIN_DESIGN {
                     cif_list.collect { cif_file ->
                         def base_name = cif_file.baseName
                         def design_meta = [
-                            id: "${meta.id}_${base_name}_protenix",
+                            id: "${meta.id}_${base_name}_boltz2",
                             parent_id: meta.parent_id,  // Link to original Boltzgen design
                             mpnn_parent_id: meta.id,     // Track which ProteinMPNN design this came from
-                            source: "protenix"
+                            source: "boltz2"
                         ]
                         
                         [design_meta, cif_file]
                     }
                 }
             
-            // Combine both Boltzgen and Protenix structures
-            ch_foldseek_input = ch_foldseek_boltzgen.mix(ch_foldseek_protenix)
+            // Combine both Boltzgen and Boltz-2 structures
+            ch_foldseek_input = ch_foldseek_boltzgen.mix(ch_foldseek_boltz2)
         } else {
             // Only Boltzgen structures
             ch_foldseek_input = ch_foldseek_boltzgen
         }
         
-        // Run Foldseek structural search for all CIF files (Boltzgen + Protenix)
+        // Run Foldseek structural search for all CIF files (Boltzgen + Boltz-2)
         // This runs in parallel with IPSAE and PRODIGY analyses
         FOLDSEEK_SEARCH(ch_foldseek_input, ch_foldseek_database)
     }
@@ -436,9 +413,11 @@ workflow PROTEIN_DESIGN {
     mpnn_sequences = params.run_proteinmpnn ? PROTEINMPNN_OPTIMIZE.out.sequences : Channel.empty()
     mpnn_scores = params.run_proteinmpnn ? PROTEINMPNN_OPTIMIZE.out.scores : Channel.empty()
     
-    // Protenix refolding outputs (will be empty if not run)
-    protenix_structures = (params.run_proteinmpnn && params.run_protenix_refold) ? PROTENIX_REFOLD.out.structures : Channel.empty()
-    protenix_confidence = (params.run_proteinmpnn && params.run_protenix_refold) ? PROTENIX_REFOLD.out.confidence : Channel.empty()
+    // Boltz-2 refolding outputs (will be empty if not run)
+    boltz2_structures = (params.run_proteinmpnn && params.run_boltz2_refold) ? BOLTZ2_REFOLD.out.structures : Channel.empty()
+    boltz2_confidence = (params.run_proteinmpnn && params.run_boltz2_refold) ? BOLTZ2_REFOLD.out.confidence : Channel.empty()
+    boltz2_pae_npz = (params.run_proteinmpnn && params.run_boltz2_refold) ? BOLTZ2_REFOLD.out.pae_npz : Channel.empty()
+    boltz2_affinity = (params.run_proteinmpnn && params.run_boltz2_refold) ? BOLTZ2_REFOLD.out.affinity : Channel.empty()
     
     // Optional analysis outputs (will be empty if not run)
     foldseek_results = params.run_foldseek ? FOLDSEEK_SEARCH.out.results : Channel.empty()
