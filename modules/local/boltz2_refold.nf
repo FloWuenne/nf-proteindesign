@@ -134,6 +134,7 @@ for fasta_file in fasta_files:
     print(f"Processing {len(sequences_to_process)} new MPNN sequences (skipping original)")
     
     # Create Boltz-2 YAML for each NEW sequence (skip first one)
+    # Create Boltz-2 YAML for each NEW sequence (skip first one)
     for idx, (header, binder_seq) in enumerate(sequences_to_process):
         # Create YAML input for Boltz-2
         # Format: binder (designed sequence) + target (original protein)
@@ -165,11 +166,54 @@ for fasta_file in fasta_files:
             'sequences': [binder_entry, target_entry]
         }
         
-        # Add affinity prediction property
-        if ${params.boltz2_predict_affinity ? 'True' : 'False'}:
-            boltz2_input['properties'] = [
-                {'affinity': {'binder': 'BINDER'}}
-            ]
+        # Check for multi-chain sequence (ProteinMPNN uses / separator)
+        if '/' in binder_seq:
+            # Multi-chain case: ProteinMPNN output includes all chains
+            # We split them and create separate entities
+            parts = binder_seq.split('/')
+            seq_list = []
+            for i, part in enumerate(parts):
+                # Use simple IDs: A, B, C...
+                chain_id = chr(65+i)
+                seq_list.append({
+                    'protein': {
+                        'id': chain_id,
+                        'sequence': part
+                    }
+                })
+            
+            boltz2_input = {
+                'version': 1,
+                'sequences': seq_list
+            }
+            print(f"  Detected multi-chain sequence ({len(parts)} chains)")
+            
+        else:
+            # Single chain case: Binder + Target
+            boltz2_input = {
+                'version': 1,
+                'sequences': [
+                    {
+                        'protein': {
+                            'id': 'BINDER',
+                            'sequence': binder_seq
+                        }
+                    },
+                    {
+                        'protein': {
+                            'id': 'TARGET', 
+                            'sequence': target_seq
+                        }
+                    }
+                ]
+            }
+            
+            # Add affinity prediction property (only for single binder case)
+            # Note: Boltz-2 currently only supports affinity for ligands, so this might fail for proteins
+            if ${params.boltz2_predict_affinity ? 'True' : 'False'}:
+                boltz2_input['properties'] = [
+                    {'affinity': {'binder': 'BINDER'}}
+                ]
         
         # Write YAML file
         yaml_file = f"yaml_inputs/{output_base}_seq_{yaml_count}.yaml"

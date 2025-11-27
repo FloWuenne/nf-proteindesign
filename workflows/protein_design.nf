@@ -345,7 +345,7 @@ workflow PROTEIN_DESIGN {
                     def npz_map = [:]
                     npz_list.each { npz_file ->
                         // Extract base name (without _pae suffix if present)
-                        def base_name = npz_file.baseName.replaceAll(/_pae.*$/, '')
+                        def base_name = npz_file.baseName.replaceAll(/^pae_|_pae/, '')
                         npz_map[base_name] = npz_file
                     }
                     
