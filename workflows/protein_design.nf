@@ -111,10 +111,11 @@ workflow PROTEIN_DESIGN {
                 .map { meta, fasta -> 
                     [meta.parent_id, meta, fasta]
                 }
-                .join(
+                .combine(
                     EXTRACT_TARGET_SEQUENCES.out.target_sequences.map { meta, seq -> 
                         [meta.id, seq]
-                    }
+                    },
+                    by: 0  // Combine by parent_id (index 0)
                 )
                 .map { parent_id, meta, fasta, target_seq ->
                     [meta, fasta, target_seq]
