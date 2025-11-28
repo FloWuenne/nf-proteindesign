@@ -10,7 +10,6 @@ include { BOLTZGEN_RUN } from '../modules/local/boltzgen_run'
 include { CONVERT_CIF_TO_PDB } from '../modules/local/convert_cif_to_pdb'
 include { PROTEINMPNN_OPTIMIZE } from '../modules/local/proteinmpnn_optimize'
 include { EXTRACT_TARGET_SEQUENCES } from '../modules/local/extract_target_sequences'
-include { MMSEQS2_MSA } from '../modules/local/mmseqs2_msa'
 include { BOLTZ2_REFOLD } from '../modules/local/boltz2_refold'
 include { IPSAE_CALCULATE } from '../modules/local/ipsae_calculate'
 include { PRODIGY_PREDICT } from '../modules/local/prodigy_predict'
@@ -20,7 +19,7 @@ include { CONSOLIDATE_METRICS } from '../modules/local/consolidate_metrics'
 workflow PROTEIN_DESIGN {
     
     take:
-    ch_input    // channel: [meta, design_yaml, structure_files]
+    ch_input    // channel: [meta, design_yaml, structure_files, target_msa]
     ch_cache    // channel: path to cache directory or EMPTY_CACHE placeholder
 
     main:
@@ -91,95 +90,23 @@ workflow PROTEIN_DESIGN {
             EXTRACT_TARGET_SEQUENCES(ch_boltzgen_structures)
             
             // ================================================================
-            // MMSeqs2 MSA Generation (if enabled)
+            // Prepare Target MSA from Samplesheet
             // ================================================================
-            def msa_mode = params.boltz2_msa_mode ?: 'target_only'
-            
-            // Prepare target MSAs if needed
-            if (msa_mode in ['target_only', 'both']) {
-                // Create target sequence FASTA files for MMSeqs2
-                // Deduplicate targets to run MSA only once per unique sequence
-                ch_target_for_msa = EXTRACT_TARGET_SEQUENCES.out.target_sequences
-                    .map { meta, target_seq ->
-                        // Read sequence content for deduplication
-                        def seq_content = target_seq.text.trim()
-                        [seq_content, meta, target_seq]
-                    }
-                    .unique { it[0] }  // Deduplicate by sequence content
-                    .map { seq_content, meta, target_seq ->
-                        // Create meta for MSA process
-                        def msa_meta = [
-                            id: "${meta.id}_target",
-                            parent_id: meta.id,
-                            sequence_type: 'target'
-                        ]
-                        [msa_meta, target_seq]
-                    }
-                
-                // Run MMSeqs2 on unique target sequences
-                MMSEQS2_MSA(ch_target_for_msa)
-                ch_target_msa = MMSEQS2_MSA.out.msa
-            } else {
-                // Create empty channel with NO_MSA placeholder
-                ch_target_msa = Channel.empty()
-            }
-            
-            // Prepare binder MSAs if needed
-            if (msa_mode in ['binder_only', 'both']) {
-                // Extract binder sequences from FASTA files and deduplicate
-                ch_binder_for_msa = PROTEINMPNN_OPTIMIZE.out.sequences
-                    .flatMap { meta, fasta_files ->
-                        def fasta_list = fasta_files instanceof List ? fasta_files : [fasta_files]
-                        fasta_list.collect { fasta_file ->
-                            [meta, fasta_file]
-                        }
-                    }
-                    .map { meta, fasta_file ->
-                        // Read and parse FASTA to extract first sequence
-                        def lines = fasta_file.readLines()
-                        def seq_lines = []
-                        def in_seq = false
-                        for (line in lines) {
-                            if (line.startsWith('>')) {
-                                if (in_seq) break  // Stop after first sequence
-                                in_seq = true
-                            } else if (in_seq) {
-                                seq_lines.add(line.trim())
-                            }
-                        }
-                        def binder_seq = seq_lines.join('')
-                        [binder_seq, meta, fasta_file]
-                    }
-                    .unique { it[0] }  // Deduplicate by sequence content
-                    .map { binder_seq, meta, fasta_file ->
-                        // Create temporary FASTA for MSA
-                        def msa_meta = [
-                            id: "${meta.id}_binder",
-                            parent_id: meta.parent_id,
-                            sequence_type: 'binder'
-                        ]
-                        
-                        // Create a proper FASTA file from the sequence
-                        def temp_fasta = file("${workDir}/binder_seqs/${meta.id}_binder.fasta")
-                        temp_fasta.getParent().mkdirs()
-                        temp_fasta.text = ">${meta.id}_binder\\n${binder_seq}\\n"
-                        
-                        [msa_meta, temp_fasta]
-                    }
-                
-                // Run MMSeqs2 on unique binder sequences
-                MMSEQS2_MSA(ch_binder_for_msa)
-                ch_binder_msa = MMSEQS2_MSA.out.msa
-            } else {
-                // Create empty channel with NO_MSA placeholder
-                ch_binder_msa = Channel.empty()
-            }
+            // Use pre-computed MSA files provided in the samplesheet
+            // If no MSA is provided, Boltz-2 will infer missing MSA info for binder
+            ch_target_msa = ch_input
+                .map { meta, design_yaml, structure_files, target_msa ->
+                    // Create a placeholder file if no MSA provided
+                    def msa_file = target_msa ?: file('NO_MSA')
+                    [meta.id, msa_file]
+                }
             
             // ================================================================
-            // Prepare inputs for Boltz-2 with MSA support
+            // Prepare inputs for Boltz-2 with target MSA
             // ================================================================
             // Parallelize Boltz-2 per FASTA file (one per ProteinMPNN sequence)
-            ch_boltz2_base = PROTEINMPNN_OPTIMIZE.out.sequences
+            // Always use target MSA from samplesheet; Boltz-2 will infer binder MSA
+            ch_boltz2_input = PROTEINMPNN_OPTIMIZE.out.sequences
                 .flatMap { meta, fasta_files ->
                     def fasta_list = fasta_files instanceof List ? new ArrayList(fasta_files) : [fasta_files]
                     fasta_list.collect { fasta_file ->
@@ -202,75 +129,15 @@ workflow PROTEIN_DESIGN {
                     by: 0
                 )
                 .map { parent_id, meta, fasta, target_seq ->
-                    [meta, fasta, target_seq]
+                    [parent_id, meta, fasta, target_seq]
+                }
+                .combine(ch_target_msa, by: 0)
+                .map { parent_id, meta, fasta, target_seq, target_msa ->
+                    [meta, fasta, target_seq, target_msa]
                 }
             
-            // Add MSA files based on mode
-            if (msa_mode == 'target_only') {
-                ch_boltz2_input = ch_boltz2_base
-                    .map { meta, fasta, target_seq ->
-                        [meta.parent_id, meta, fasta, target_seq]
-                    }
-                    .combine(
-                        ch_target_msa.map { msa_meta, msa_file ->
-                            // Extract parent ID (remove _target suffix)
-                            def parent_id = msa_meta.id.replaceAll(/_target$/, '')
-                            [parent_id, msa_file]
-                        },
-                        by: 0
-                    )
-                    .map { parent_id, meta, fasta, target_seq, target_msa ->
-                        [meta, fasta, target_seq, target_msa, file('NO_MSA')]
-                    }
-            } else if (msa_mode == 'binder_only') {
-                ch_boltz2_input = ch_boltz2_base
-                    .map { meta, fasta, target_seq ->
-                        [meta.mpnn_parent_id, meta, fasta, target_seq]
-                    }
-                    .combine(
-                        ch_binder_msa.map { msa_meta, msa_file ->
-                            def parent_id = msa_meta.id.replaceAll(/_binder$/, '')
-                            [parent_id, msa_file]
-                        },
-                        by: 0
-                    )
-                    .map { mpnn_parent_id, meta, fasta, target_seq, binder_msa ->
-                        [meta, fasta, target_seq, file('NO_MSA'), binder_msa]
-                    }
-            } else if (msa_mode == 'both') {
-                ch_boltz2_input = ch_boltz2_base
-                    .map { meta, fasta, target_seq ->
-                        [meta.parent_id, meta.mpnn_parent_id, meta, fasta, target_seq]
-                    }
-                    .combine(
-                        ch_target_msa.map { msa_meta, msa_file ->
-                            def parent_id = msa_meta.id.replaceAll(/_target$/, '')
-                            [parent_id, msa_file]
-                        },
-                        by: 0
-                    )
-                    .map { parent_id, mpnn_parent_id, meta, fasta, target_seq, target_msa ->
-                        [mpnn_parent_id, meta, fasta, target_seq, target_msa]
-                    }
-                    .combine(
-                        ch_binder_msa.map { msa_meta, msa_file ->
-                            def parent_id = msa_meta.id.replaceAll(/_binder$/, '')
-                            [parent_id, msa_file]
-                        },
-                        by: 0
-                    )
-                    .map { mpnn_parent_id, meta, fasta, target_seq, target_msa, binder_msa ->
-                        [meta, fasta, target_seq, target_msa, binder_msa]
-                    }
-            } else {
-                // No MSA mode
-                ch_boltz2_input = ch_boltz2_base
-                    .map { meta, fasta, target_seq ->
-                        [meta, fasta, target_seq, file('NO_MSA'), file('NO_MSA')]
-                    }
-            }
-            
-            // Run Boltz-2 structure prediction with MSA support
+            // Run Boltz-2 structure prediction with target MSA
+            // NOTE: Boltz-2 will automatically add missing MSA info to binder
             // NOTE: Boltz-2 outputs NPZ files natively - no conversion needed!
             BOLTZ2_REFOLD(ch_boltz2_input)
         }

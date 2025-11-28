@@ -106,7 +106,7 @@ workflow NFPROTEINDESIGN {
         .fromList(design_samplesheet)
         .map { tuple ->
             // samplesheetToList returns list of values in schema order
-            // Order: sample_id, design_yaml, structure_files, protocol, num_designs, budget, reuse
+            // Order: sample_id, design_yaml, structure_files, protocol, num_designs, budget, reuse, target_msa
             def sample_id = tuple[0]
             def design_yaml_path = tuple[1]
             def structure_files_str = tuple[2]
@@ -114,6 +114,7 @@ workflow NFPROTEINDESIGN {
             def num_designs = tuple[4]
             def budget = tuple[5]
             def reuse = tuple.size() > 6 ? tuple[6] : null
+            def target_msa_path = tuple.size() > 7 ? tuple[7] : null
             
             // Convert design YAML to file object and validate existence
             // Smart path resolution: try launchDir first (for local runs), then projectDir (for Platform)
@@ -150,6 +151,21 @@ workflow NFPROTEINDESIGN {
                 }
             }
             
+            // Parse target MSA file if provided
+            def target_msa = null
+            if (target_msa_path) {
+                if (target_msa_path.startsWith('/') || target_msa_path.contains('://')) {
+                    target_msa = file(target_msa_path, checkIfExists: true)
+                } else {
+                    def launchDir_path = file(target_msa_path)
+                    if (launchDir_path.exists()) {
+                        target_msa = launchDir_path
+                    } else {
+                        target_msa = file("${project_dir}/${target_msa_path}", checkIfExists: true)
+                    }
+                }
+            }
+            
             def meta = [:]
             meta.id = sample_id
             meta.protocol = protocol ?: params.protocol
@@ -157,7 +173,7 @@ workflow NFPROTEINDESIGN {
             meta.budget = budget ?: params.budget
             meta.reuse = reuse ?: false
             
-            [meta, design_yaml, structure_files]
+            [meta, design_yaml, structure_files, target_msa]
         }
 
     // ========================================================================

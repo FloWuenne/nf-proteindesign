@@ -44,6 +44,10 @@
       "reuse": {
         "type": "boolean",
         "errorMessage": "Reuse must be true or false"
+      },
+      "target_msa": {
+        "type": "string",
+        "errorMessage": "Target MSA must be a valid file path to a pre-computed MSA file (e.g., 'target.a3m' or 'target_msa.fasta')"
       }
     },
     "required": ["sample_id", "design_yaml"]

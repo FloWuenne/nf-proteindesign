@@ -27,7 +27,7 @@ process BOLTZ2_REFOLD {
     accelerator 1, type: 'nvidia-gpu'
 
     input:
-    tuple val(meta), path(mpnn_sequences), path(target_sequence_file), path(target_msa), path(binder_msa)
+    tuple val(meta), path(mpnn_sequences), path(target_sequence_file), path(target_msa)
 
     output:
     tuple val(meta), path("${meta.id}_boltz2_output"), emit: predictions
@@ -42,7 +42,6 @@ process BOLTZ2_REFOLD {
     def num_recycling = params.boltz2_num_recycling ?: 3
     def num_diffusion = params.boltz2_num_diffusion ?: 200
     def has_target_msa = target_msa.name != 'NO_MSA'
-    def has_binder_msa = binder_msa.name != 'NO_MSA'
     """
     #!/bin/bash
     set -euo pipefail
@@ -94,9 +93,7 @@ target_seq = "\$TARGET_SEQ"
 output_base = "${meta.id}"
 parent_id = "${meta.parent_id}"
 has_target_msa = ${has_target_msa}
-has_binder_msa = ${has_binder_msa}
 target_msa_path = "${target_msa}" if has_target_msa else None
-binder_msa_path = "${binder_msa}" if has_binder_msa else None
 
 # Process each FASTA file
 yaml_count = 0
@@ -134,10 +131,10 @@ for fasta_file in fasta_files:
     print(f"Processing {len(sequences_to_process)} new MPNN sequences (skipping original)")
     
     # Create Boltz-2 YAML for each NEW sequence (skip first one)
-    # Create Boltz-2 YAML for each NEW sequence (skip first one)
     for idx, (header, binder_seq) in enumerate(sequences_to_process):
         # Create YAML input for Boltz-2
         # Format: binder (designed sequence) + target (original protein)
+        # Note: Only target gets MSA; Boltz-2 will infer missing MSA info for binder
         binder_entry = {
             'protein': {
                 'id': 'BINDER',
@@ -152,14 +149,11 @@ for fasta_file in fasta_files:
             }
         }
         
-        # Add MSA paths if available
-        if has_binder_msa and binder_msa_path:
-            binder_entry['protein']['msa'] = os.path.abspath(binder_msa_path)
-            print(f"    Adding binder MSA: {binder_msa_path}")
-        
+        # Add target MSA if available (binder MSA will be inferred by Boltz-2)
         if has_target_msa and target_msa_path:
             target_entry['protein']['msa'] = os.path.abspath(target_msa_path)
             print(f"    Adding target MSA: {target_msa_path}")
+            print(f"    Binder MSA will be inferred automatically by Boltz-2")
         
         boltz2_input = {
             'version': 1,
@@ -223,8 +217,8 @@ for fasta_file in fasta_files:
         print(f"  Created YAML input: {yaml_file}")
         print(f"    Binder length: {len(binder_seq)}")
         print(f"    Target length: {len(target_seq)}")
-        print(f"    Binder MSA: {'Yes' if has_binder_msa else 'No'}")
-        print(f"    Target MSA: {'Yes' if has_target_msa else 'No'}")
+        print(f"    Target MSA: {'Yes' if has_target_msa else 'No (will use sequence only)'}")
+        print(f"    Binder MSA: Inferred automatically by Boltz-2")
         
         yaml_count += 1
 
