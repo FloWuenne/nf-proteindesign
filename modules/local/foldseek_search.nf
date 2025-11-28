@@ -5,7 +5,7 @@ process FOLDSEEK_SEARCH {
     // Publish results
     publishDir "${params.outdir}/${meta.parent_id ?: meta.id}/foldseek", mode: params.publish_dir_mode
 
-    container 'quay.io/biocontainers/foldseek:9.427df8a--pl5321hf1761c0_0'
+    container 'ghcr.io/steineggerlab/foldseek:master-cuda12'
     
     // GPU acceleration - Foldseek supports GPU for faster searches (4-27x speedup)
     accelerator 1, type: 'nvidia-gpu'
@@ -36,25 +36,7 @@ process FOLDSEEK_SEARCH {
     }
     
     """
-    # Create temporary directory for Foldseek
-    mkdir -p tmp_foldseek
-    
-    # Check for GPU availability and configure Foldseek accordingly
-    GPU_FLAG=""
-    if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-        echo "GPU detected - Foldseek will use GPU acceleration"
-        # Enable GPU mode (1 = use GPU)
-        GPU_FLAG="--gpu 1"
-        # Use prefilter mode 1 for optimal GPU utilization
-        PREFILTER_MODE="--prefilter-mode 1"
-    else
-        echo "No GPU detected - Foldseek will run on CPU only"
-        GPU_FLAG="--gpu 0"
-        PREFILTER_MODE=""
-    fi
-    
-    # Run Foldseek easy-search with GPU support if available
-    foldseek easy-search \\
+    easy-search \\
         ${structure} \\
         ${db_path} \\
         ${meta.id}_foldseek_results.tsv \\
@@ -65,23 +47,8 @@ process FOLDSEEK_SEARCH {
         -c ${coverage} \\
         --alignment-type ${alignment_type} \\
         --threads ${task.cpus} \\
-        \${GPU_FLAG} \\
-        \${PREFILTER_MODE}
-    
-    # Create summary with top hits
-    # Output format: query,target,evalue,bits,qstart,qend,tstart,tend,alnlen,qlen,tlen,qaln,taln
-    head -n 11 ${meta.id}_foldseek_results.tsv | \\
-        awk 'BEGIN {OFS="\\t"; print "query", "target", "fident", "alnlen", "mismatch", "gapopen", "qstart", "qend", "tstart", "tend", "evalue", "bits"} 
-             {print}' > ${meta.id}_foldseek_summary.tsv
-    
-    # Clean up
-    rm -rf tmp_foldseek
-    
-    # Generate version information
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        foldseek: \$(foldseek version 2>&1 | grep -oP 'Version: \\K[0-9a-f]+' || echo "9.427df8a")
-    END_VERSIONS
+        --gpu 1 \\
+        --prefilter-mode 1
     """
 
     stub:
