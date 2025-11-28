@@ -20,8 +20,7 @@ process BOLTZ2_REFOLD {
     // Publish results
     publishDir "${params.outdir}/${meta.parent_id}/boltz2", mode: params.publish_dir_mode
 
-    // Build Boltz-2 container using Wave with conda
-    container 'boltz2:latest'
+    container 'giosbiostructures/boltz2:latest'
     
     // GPU acceleration - Boltz-2 benefits from GPU for efficient prediction
     accelerator 1, type: 'nvidia-gpu'
@@ -45,7 +44,10 @@ process BOLTZ2_REFOLD {
     """
     #!/bin/bash
     set -euo pipefail
-    
+
+    echo "TORCH_FLOAT32_MATMUL_PRECISION=\$TORCH_FLOAT32_MATMUL_PRECISION"
+    env | grep TORCH
+
     # Fix for Numba caching error in containers
     export NUMBA_CACHE_DIR="\${PWD}/numba_cache"
     mkdir -p "\${NUMBA_CACHE_DIR}"
@@ -88,6 +90,7 @@ process BOLTZ2_REFOLD {
         --meta_id "${meta.id}" \\
         --parent_id "${meta.parent_id}" \\
         --output_dir "yaml_inputs" \\
+        --treat_as_designed \\
         ${params.boltz2_predict_affinity ? '--predict_affinity' : ''}
     
     # Count YAML files created

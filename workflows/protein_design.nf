@@ -9,6 +9,7 @@
 include { BOLTZGEN_RUN } from '../modules/local/boltzgen_run'
 include { CONVERT_CIF_TO_PDB } from '../modules/local/convert_cif_to_pdb'
 include { PROTEINMPNN_OPTIMIZE } from '../modules/local/proteinmpnn_optimize'
+include { SPLIT_PROTEINMPNN_SEQUENCES } from '../modules/local/split_proteinmpnn_sequences'
 include { EXTRACT_TARGET_SEQUENCES } from '../modules/local/extract_target_sequences'
 include { BOLTZ2_REFOLD } from '../modules/local/boltz2_refold'
 include { IPSAE_CALCULATE } from '../modules/local/ipsae_calculate'
@@ -110,14 +111,31 @@ workflow PROTEIN_DESIGN {
             // ================================================================
             // Prepare inputs for Boltz-2 with target MSA
             // ================================================================
-            // Parallelize Boltz-2 per FASTA file (one per ProteinMPNN sequence)
-            // Always use target MSA from samplesheet; Boltz-2 will infer binder MSA
-            ch_boltz2_input = PROTEINMPNN_OPTIMIZE.out.sequences
+            
+            // Step 3a: Split ProteinMPNN multi-sequence FASTAs into individual files
+            // This allows us to parallelize Boltz-2 refolding per sequence
+            ch_mpnn_sequences_to_split = PROTEINMPNN_OPTIMIZE.out.sequences
                 .flatMap { meta, fasta_files ->
                     def fasta_list = fasta_files instanceof List ? new ArrayList(fasta_files) : [fasta_files]
                     fasta_list.collect { fasta_file ->
+                        [meta, fasta_file]
+                    }
+                }
+                
+            SPLIT_PROTEINMPNN_SEQUENCES(ch_mpnn_sequences_to_split)
+            
+            // Step 3b: Create channel for Boltz-2 refolding
+            // Parallelize Boltz-2 per FASTA file (one per ProteinMPNN sequence)
+            // Always use target MSA from samplesheet; Boltz-2 will infer binder MSA
+            ch_boltz2_input = SPLIT_PROTEINMPNN_SEQUENCES.out.sequences
+                .flatMap { meta, fasta_files ->
+                    def fasta_list = fasta_files instanceof List ? new ArrayList(fasta_files) : [fasta_files]
+                    fasta_list.collect { fasta_file ->
+                        // Extract sequence number from filename (e.g., ..._seq_1.fa)
+                        def seq_num = fasta_file.baseName.replaceAll(/.*_seq_(\d+)$/, '$1')
+                        
                         def seq_meta = [
-                            id: "${meta.id}_${fasta_file.baseName}",
+                            id: "${meta.id}_seq_${seq_num}",
                             parent_id: meta.parent_id,
                             mpnn_parent_id: meta.id,
                             sequence_name: fasta_file.baseName
