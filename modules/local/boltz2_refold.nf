@@ -17,8 +17,9 @@ process BOLTZ2_REFOLD {
     tag "${meta.id}"
     label 'process_high_gpu'
     
-    // Publish results
-    publishDir "${params.outdir}/${meta.parent_id}/boltz2", mode: params.publish_dir_mode
+    // Publish results - use parent_id to group by original design
+    // meta.parent_id already points to the original sample_id from the samplesheet
+    publishDir "${params.outdir}/${meta.parent_id ?: meta.id}/boltz2", mode: params.publish_dir_mode
 
     container 'giosbiostructures/boltz2:latest'
     

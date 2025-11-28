@@ -18,8 +18,8 @@ process CONSOLIDATE_METRICS {
     script:
     def top_n = params.report_top_n ?: 10
     def ipsae_pattern = params.ipsae_pae_cutoff && params.ipsae_dist_cutoff ? 
-        "**/ipsae_scores/*_${params.ipsae_pae_cutoff}_${params.ipsae_dist_cutoff}.txt" : 
-        "**/ipsae_scores/*_10_10.txt"
+        "**/ipsae/*_${params.ipsae_pae_cutoff}_${params.ipsae_dist_cutoff}.txt" : 
+        "**/ipsae/*_10_10.txt"
     def prodigy_pattern = "**/prodigy/*_prodigy_summary.csv"
     
     // Convert to absolute path if relative

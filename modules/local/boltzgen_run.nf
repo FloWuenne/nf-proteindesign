@@ -3,7 +3,7 @@ process BOLTZGEN_RUN {
     label 'process_high_gpu'
     
     // Publish results
-    publishDir "${params.outdir}/${meta.id}", mode: params.publish_dir_mode, saveAs: { filename -> filename }
+    publishDir "${params.outdir}/${meta.id}/boltzgen", mode: params.publish_dir_mode, saveAs: { filename -> filename }
 
     container 'cr.seqera.io/scidev/boltzgen:0.1.5'
     
@@ -28,7 +28,8 @@ process BOLTZGEN_RUN {
     tuple val(meta), path("${meta.id}_output/intermediate_designs/*.npz"), optional: true, emit: intermediate_npz
     
     // Intermediate inverse folded designs (all budget designs - this is what we want for IPSAE/PRODIGY)
-    tuple val(meta), path("${meta.id}_output/final_ranked_designs/final_*_designs/*.cif"), optional: true, emit: budget_design_cifs
+    // Collect both CIF files from final_ranked_designs subdirectories AND from intermediate_designs_inverse_folded
+    tuple val(meta), path("${meta.id}_output/intermediate_designs_inverse_folded/*.cif"), optional: true, emit: budget_design_cifs
     tuple val(meta), path("${meta.id}_output/intermediate_designs_inverse_folded/*.npz"), optional: true, emit: budget_design_npz
     
     // Specific intermediate outputs: binder by itself and refolded complex

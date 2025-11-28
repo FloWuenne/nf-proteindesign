@@ -2,8 +2,8 @@ process PROTEINMPNN_OPTIMIZE {
     tag "${meta.id}"
     label 'process_medium'
     
-    // Publish results
-    publishDir "${params.outdir}/${meta.id}/proteinmpnn", mode: params.publish_dir_mode
+    // Publish results - use parent_id to group by original design
+    publishDir "${params.outdir}/${meta.parent_id ?: meta.id}/proteinmpnn", mode: params.publish_dir_mode
 
     container 'cr.seqera.io/scidev/proteinmpnn:1.0.1'
     
