@@ -64,6 +64,8 @@ workflow PROTEIN_DESIGN {
                     [design_meta, pdb_file]
                 }
             }
+
+        ch_pdb_per_design.view()
         
         // Run ProteinMPNN on each design individually (parallel execution per budget design)
         PROTEINMPNN_OPTIMIZE(ch_pdb_per_design)
@@ -183,7 +185,9 @@ workflow PROTEIN_DESIGN {
                 // Match CIF files with corresponding NPZ files
                 cif_list.collect { cif_file ->
                     def base_name = cif_file.baseName
-                    def npz_file = npz_map[base_name]
+                    // Strip rank prefix (e.g. rank1_target_protein_design_1 -> target_protein_design_1)
+                    def match_name = base_name.replaceAll(/^rank\d+_/, '')
+                    def npz_file = npz_map[match_name]
                     
                     if (npz_file) {
                         def model_meta = [
