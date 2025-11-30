@@ -20,15 +20,13 @@ process FOLDSEEK_SEARCH {
     path "versions.yml", emit: versions
 
     script:
-    // Determine database path - can be a path or directory
     def db_path = database.name != 'NO_DATABASE' ? database : params.foldseek_database
-
-    // Set search parameters
     def evalue = params.foldseek_evalue ?: 0.001
     def max_seqs = params.foldseek_max_seqs ?: 100
     def sensitivity = params.foldseek_sensitivity ?: 9.5
     def coverage = params.foldseek_coverage ?: 0.0
     def alignment_type = params.foldseek_alignment_type ?: 2
+    def threads = task.cpus
 
     // Validate database
     if (!db_path) {
@@ -36,21 +34,17 @@ process FOLDSEEK_SEARCH {
     }
 
     """
-    export MAX_SEQS=\$(echo "${params.foldseek_max_seqs ?: 100}")
-    export ALIGNMENT_TYPE=\$(echo "${params.foldseek_alignment_type ?: 2}")
-    export THREADS=\$(echo "${task.cpus}")
-
     /usr/local/bin/foldseek_avx2 easy-search \\
         ${structure} \\
         ${db_path}/afdb \\
         ${meta.id}_foldseek_results.tsv \\
         tmp_foldseek \\
-        -e ${params.foldseek_evalue ?: 0.001} \\
-        --max-seqs \$MAX_SEQS \\
-        -s ${params.foldseek_sensitivity ?: 9.5} \\
-        -c ${params.foldseek_coverage ?: 0.0} \\
-        --alignment-type \$ALIGNMENT_TYPE \\
-        --threads \$THREADS \\
+        -e ${evalue} \\
+        --max-seqs ${max_seqs} \\
+        -s ${sensitivity} \\
+        -c ${coverage} \\
+        --alignment-type ${alignment_type} \\
+        --threads ${threads} \\
         --gpu 1 \\
         --prefilter-mode 1
 
