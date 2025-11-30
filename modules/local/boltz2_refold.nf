@@ -27,7 +27,7 @@ process BOLTZ2_REFOLD {
     accelerator 1, type: 'nvidia-gpu'
 
     input:
-    tuple val(meta), path(mpnn_sequences), path(target_sequence_file), path(target_msa)
+    tuple val(meta), path(mpnn_sequences), path(target_sequence_file), path(target_msa), path(target_template)
     path cache_dir
 
     output:
@@ -44,6 +44,7 @@ process BOLTZ2_REFOLD {
     def num_recycling = params.boltz2_num_recycling ?: 3
     def num_diffusion = params.boltz2_num_diffusion ?: 5
     def has_target_msa = target_msa.name != 'NO_MSA'
+    def has_target_template = target_template.name != 'NO_TEMPLATE'
     """
     #!/bin/bash
     set -euo pipefail
@@ -89,6 +90,7 @@ process BOLTZ2_REFOLD {
         --mpnn_sequences "${mpnn_sequences}" \\
         --target_sequence "\$TARGET_SEQ" \\
         --target_msa "${target_msa}" \\
+        --target_template "${target_template}" \\
         --meta_id "${meta.id}" \\
         --parent_id "${meta.parent_id}" \\
         --output_dir "yaml_inputs" \\

@@ -106,7 +106,7 @@ workflow NFPROTEINDESIGN {
         .fromList(design_samplesheet)
         .map { tuple ->
             // samplesheetToList returns list of values in schema order
-            // Order: sample_id, design_yaml, structure_files, protocol, num_designs, budget, reuse, target_msa, target_sequence
+            // Order: sample_id, design_yaml, structure_files, protocol, num_designs, budget, reuse, target_msa, target_sequence, target_template
             def sample_id = tuple[0]
             def design_yaml_path = tuple[1]
             def structure_files_str = tuple[2]
@@ -116,6 +116,7 @@ workflow NFPROTEINDESIGN {
             def reuse = tuple.size() > 6 ? tuple[6] : null
             def target_msa_path = tuple.size() > 7 ? tuple[7] : null
             def target_sequence_path = tuple.size() > 8 ? tuple[8] : null
+            def target_template_path = tuple.size() > 9 ? tuple[9] : null
             
             // Convert design YAML to file object and validate existence
             // Smart path resolution: try launchDir first (for local runs), then projectDir (for Platform)
@@ -182,6 +183,21 @@ workflow NFPROTEINDESIGN {
                 }
             }
 
+            // Parse target template CIF file (optional for Boltz2 refolding)
+            def target_template = null
+            if (target_template_path) {
+                if (target_template_path.startsWith('/') || target_template_path.contains('://')) {
+                    target_template = file(target_template_path, checkIfExists: true)
+                } else {
+                    def launchDir_path = file(target_template_path)
+                    if (launchDir_path.exists()) {
+                        target_template = launchDir_path
+                    } else {
+                        target_template = file("${project_dir}/${target_template_path}", checkIfExists: true)
+                    }
+                }
+            }
+
             def meta = [:]
             meta.id = sample_id
             meta.protocol = protocol ?: params.protocol
@@ -189,7 +205,7 @@ workflow NFPROTEINDESIGN {
             meta.budget = budget ?: params.budget
             meta.reuse = reuse ?: false
 
-            [meta, design_yaml, structure_files, target_msa, target_sequence]
+            [meta, design_yaml, structure_files, target_msa, target_sequence, target_template]
         }
 
     // ========================================================================

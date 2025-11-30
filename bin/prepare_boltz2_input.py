@@ -10,6 +10,7 @@ def parse_args():
     parser.add_argument('--mpnn_sequences', required=True, help='Path to ProteinMPNN sequences FASTA file')
     parser.add_argument('--target_sequence', required=True, help='Target sequence string')
     parser.add_argument('--target_msa', help='Path to target MSA file')
+    parser.add_argument('--target_template', help='Path to target template CIF file')
     parser.add_argument('--meta_id', required=True, help='ID for the current design')
     parser.add_argument('--parent_id', required=True, help='Parent ID')
     parser.add_argument('--predict_affinity', action='store_true', help='Enable affinity prediction')
@@ -33,6 +34,13 @@ def main():
     if args.target_msa and args.target_msa != 'NO_MSA' and os.path.exists(args.target_msa):
         has_target_msa = True
         target_msa_path = args.target_msa
+    
+    # Check if target template is provided and valid
+    has_target_template = False
+    target_template_path = None
+    if args.target_template and args.target_template != 'NO_TEMPLATE' and os.path.exists(args.target_template):
+        has_target_template = True
+        target_template_path = args.target_template
     
     os.makedirs(args.output_dir, exist_ok=True)
     
@@ -104,6 +112,18 @@ def main():
             if has_target_msa and target_msa_path:
                 target_entry['protein']['msa'] = os.path.abspath(target_msa_path)
                 print(f"    Adding target MSA: {target_msa_path}")
+            
+            # Add template configuration if provided
+            # Template is always applied to chain B (target) with force=true and threshold=1.0
+            if has_target_template and target_template_path:
+                target_entry['protein']['templates'] = [{
+                    'cif': os.path.abspath(target_template_path),
+                    'force': True,
+                    'threshold': 1.0,
+                    'chain_id': 'B'
+                }]
+                print(f"    Adding target template: {target_template_path} (force=true, threshold=1.0)")
+            
             # Build final YAML input with exactly two entries
             boltz2_input = {
                 'version': 1,
@@ -127,7 +147,7 @@ def main():
                 yaml.dump(boltz2_input, yf, default_flow_style=False)
 
             print(f"  Created YAML input: {yaml_file}")
-            print(f"    Binder length: {len(binder_seq)}")
+            print(f"    Binder length: {len(binder_seq_clean)}")
             print(f"    Target length: {len(target_seq)}")
             print(f"    Target MSA: {'Yes' if has_target_msa else 'No (will use sequence only)'}")
             print(f"    Binder MSA: Inferred automatically by Boltz-2")

@@ -19,7 +19,7 @@ include { CONSOLIDATE_METRICS } from '../modules/local/consolidate_metrics'
 workflow PROTEIN_DESIGN {
 
     take:
-    ch_input         // channel: [meta, design_yaml, structure_files, target_msa, target_sequence]
+    ch_input         // channel: [meta, design_yaml, structure_files, target_msa, target_sequence, target_template]
     ch_cache         // channel: path to cache directory or EMPTY_CACHE placeholder
     ch_boltz2_cache  // channel: path to Boltz-2 cache directory or EMPTY_BOLTZ2_CACHE placeholder
 
@@ -29,9 +29,9 @@ workflow PROTEIN_DESIGN {
     // Run Boltzgen on design YAMLs
     // ========================================================================
 
-    // Prepare Boltzgen input by removing target_msa and target_sequence (not needed for Boltzgen)
+    // Prepare Boltzgen input by removing target_msa, target_sequence, and target_template (not needed for Boltzgen)
     ch_boltzgen_input = ch_input
-        .map { meta, design_yaml, structure_files, target_msa, target_sequence ->
+        .map { meta, design_yaml, structure_files, target_msa, target_sequence, target_template ->
             [meta, design_yaml, structure_files]
         }
     
@@ -86,7 +86,7 @@ workflow PROTEIN_DESIGN {
         if (params.run_boltz2_refold) {
             // Get target sequence FASTA from samplesheet
             ch_target_fasta = ch_input
-                .map { meta, design_yaml, structure_files, target_msa, target_sequence ->
+                .map { meta, design_yaml, structure_files, target_msa, target_sequence, target_template ->
                     [meta.id, target_sequence]
                 }
 
@@ -113,9 +113,18 @@ workflow PROTEIN_DESIGN {
             // Prepare Target MSA from Samplesheet
             // ================================================================
             ch_target_msa = ch_input
-                .map { meta, design_yaml, structure_files, target_msa, target_sequence ->
+                .map { meta, design_yaml, structure_files, target_msa, target_sequence, target_template ->
                     def msa_file = target_msa ?: file('NO_MSA')
                     [meta.id, msa_file]
+                }
+
+            // ================================================================
+            // Prepare Target Template from Samplesheet
+            // ================================================================
+            ch_target_template = ch_input
+                .map { meta, design_yaml, structure_files, target_msa, target_sequence, target_template ->
+                    def template_file = target_template ?: file('NO_TEMPLATE')
+                    [meta.id, template_file]
                 }
 
             // ================================================================
@@ -156,7 +165,11 @@ workflow PROTEIN_DESIGN {
                 }
                 .combine(ch_target_msa, by: 0)
                 .map { parent_id, meta, fasta, target_seq, target_msa ->
-                    [meta, fasta, target_seq, target_msa]
+                    [meta.parent_id, meta, fasta, target_seq, target_msa]
+                }
+                .combine(ch_target_template, by: 0)
+                .map { parent_id, meta, fasta, target_seq, target_msa, target_template ->
+                    [meta, fasta, target_seq, target_msa, target_template]
                 }
 
             // Run Boltz-2 structure prediction with target MSA

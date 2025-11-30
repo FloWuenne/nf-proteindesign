@@ -52,8 +52,17 @@
       "target_sequence": {
         "type": "string",
         "errorMessage": "Target sequence must be a valid file path to a FASTA file containing the target protein sequence"
+      },
+      "target_template": {
+        "type": "string",
+        "pattern": "^\\S+\\.cif$",
+        "errorMessage": "Target template must be a valid file path to a CIF file (e.g., 'target_structure.cif')"
       }
     },
-    "required": ["sample_id", "design_yaml", "target_sequence"]
+    "required": [
+      "sample_id",
+      "design_yaml",
+      "target_sequence"
+    ]
   }
 }

@@ -22,7 +22,7 @@
                     "mimetype": "text/csv",
                     "pattern": "^\\S+\\.csv$",
                     "description": "Path to comma-separated samplesheet file.",
-                    "help_text": "The samplesheet must contain: `sample`, `design_yaml`, and optionally: `structure_files`, `protocol`, `num_designs`, `budget`, `reuse`\n\nSee schema file in assets/schema_input_design.json for detailed specifications.",
+                    "help_text": "The samplesheet must contain: `sample_id`, `design_yaml`, `target_sequence`, and optionally: `structure_files`, `protocol`, `num_designs`, `budget`, `reuse`, `target_msa`, `target_template`\n\nSee schema file in assets/schema_input_design.json for detailed specifications.",
                     "fa_icon": "fas fa-file-csv"
                 },
                 "outdir": {
@@ -41,35 +41,6 @@
             "default": "",
             "fa_icon": "fas fa-cogs",
             "properties": {
-                "protocol": {
-                    "type": "string",
-                    "default": "protein-anything",
-                    "description": "Boltzgen design protocol.",
-                    "help_text": "Available protocols:\n- **protein-anything**: General protein design\n- **peptide-anything**: Peptide binder design\n- **protein-small_molecule**: Protein-small molecule interaction\n- **nanobody-anything**: Nanobody design",
-                    "enum": [
-                        "protein-anything",
-                        "peptide-anything",
-                        "protein-small_molecule",
-                        "nanobody-anything"
-                    ],
-                    "fa_icon": "fas fa-flask"
-                },
-                "num_designs": {
-                    "type": "integer",
-                    "default": 100,
-                    "description": "Number of intermediate designs to generate.",
-                    "help_text": "For production runs, recommend 10,000-60,000 designs. Lower values (100-1000) suitable for testing.",
-                    "fa_icon": "fas fa-hashtag",
-                    "minimum": 1
-                },
-                "budget": {
-                    "type": "integer",
-                    "default": 10,
-                    "description": "Number of designs in final diversity-optimized set.",
-                    "help_text": "Boltzgen will select this many diverse, high-quality designs from the intermediate pool.",
-                    "fa_icon": "fas fa-star",
-                    "minimum": 1
-                },
                 "cache_dir": {
                     "type": "string",
                     "format": "directory-path",
