@@ -55,9 +55,6 @@ workflow NFPROTEINDESIGN {
     def version_text = "nf-proteindesign v1.0.0"
     def mode_line = "Mode: DESIGN"
     def desc_line = "Using design YAML files"
-    def params_header = "Design Parameters:"
-    def num_designs_line = "• num_designs: ${params.num_designs}"
-    def budget_line = "• budget: ${params.budget}"
     def modules_header = "Analysis Modules:"
     def output_line = "Output: ${params.outdir}"
     
@@ -74,10 +71,6 @@ workflow NFPROTEINDESIGN {
     ╠════════════════════════════════════════════════════════════════╣
     ║  🎯 ${mode_line.padRight(banner_width - 6)}║
     ║     ${desc_line.padRight(banner_width - 5)}║
-    ╠════════════════════════════════════════════════════════════════╣
-    ║  ⚙️  ${params_header.padRight(banner_width - 7)}║
-    ║      ${num_designs_line.padRight(banner_width - 6)}║
-    ║      ${budget_line.padRight(banner_width - 6)}║
     ╠════════════════════════════════════════════════════════════════╣
     ║  🔬 ${modules_header.padRight(banner_width - 6)}║
     ║     ${modules_str.padRight(banner_width - 5)}║
@@ -200,9 +193,9 @@ workflow NFPROTEINDESIGN {
 
             def meta = [:]
             meta.id = sample_id
-            meta.protocol = protocol ?: params.protocol
-            meta.num_designs = num_designs ?: params.num_designs
-            meta.budget = budget ?: params.budget
+            meta.protocol = protocol
+            meta.num_designs = num_designs
+            meta.budget = budget
             meta.reuse = reuse ?: false
 
             [meta, design_yaml, structure_files, target_msa, target_sequence, target_template]
