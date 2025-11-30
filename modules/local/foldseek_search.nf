@@ -36,17 +36,21 @@ process FOLDSEEK_SEARCH {
     }
 
     """
+    export MAX_SEQS=\$(echo "${params.foldseek_max_seqs ?: 100}")
+    export ALIGNMENT_TYPE=\$(echo "${params.foldseek_alignment_type ?: 2}")
+    export THREADS=\$(echo "${task.cpus}")
+
     /usr/local/bin/foldseek_avx2 easy-search \\
         ${structure} \\
         ${db_path}/afdb \\
         ${meta.id}_foldseek_results.tsv \\
         tmp_foldseek \\
-        -e ${evalue} \\
-        --max-seqs ${max_seqs} \\
-        -s ${sensitivity} \\
-        -c ${coverage} \\
-        --alignment-type ${alignment_type} \\
-        --threads ${task.cpus} \\
+        -e ${params.foldseek_evalue ?: 0.001} \\
+        --max-seqs \$MAX_SEQS \\
+        -s ${params.foldseek_sensitivity ?: 9.5} \\
+        -c ${params.foldseek_coverage ?: 0.0} \\
+        --alignment-type \$ALIGNMENT_TYPE \\
+        --threads \$THREADS \\
         --gpu 1 \\
         --prefilter-mode 1
 
