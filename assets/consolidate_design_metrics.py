@@ -815,26 +815,16 @@ def generate_html_report(metrics, output_file, title="Protein Design Metrics Rep
             return `<span class="sequence-cell sequence-collapsed" onclick="showFoldseekTarget('${{params.data.design_id}}', '${{target}}')">${{preview}} <span class="expand-icon">&#x25BC;</span></span>`;
         }}
 
-        // Custom cell renderer for ipSAE with color coding
+        // Custom cell renderer for ipSAE
         function ipsaeCellRenderer(params) {{
             if (params.value === null || params.value === undefined) return '-';
-
-            const val = params.value.toFixed(4);
-            if (params.value < 0.5) {{
-                return `<span class="good-value">${{val}}</span>`;
-            }}
-            return val;
+            return params.value.toFixed(4);
         }}
 
-        // Custom cell renderer for binding affinity with color coding
+        // Custom cell renderer for binding affinity
         function affinityCellRenderer(params) {{
             if (params.value === null || params.value === undefined) return '-';
-
-            const val = params.value.toFixed(1);
-            if (params.value < -10) {{
-                return `<span class="good-value">${{val}}</span>`;
-            }}
-            return val;
+            return params.value.toFixed(1);
         }}
 
         // Column definitions
