@@ -226,34 +226,49 @@ workflow PROTEIN_DESIGN {
         // Process Boltz-2 refolded structures
         // ====================================================================
         if (params.run_proteinmpnn && params.run_boltz2_refold) {
-            // Get NPZ and CIF pairs directly from Boltz-2 (native NPZ output!)
-            // Only use the best model (model_0) from each Boltz2 prediction
+            // Get CIF and NPZ pairs from Boltz-2 for IPSAE
+            // Use combine instead of join for more robust matching in k8s/cloud
             ch_ipsae_input = BOLTZ2_REFOLD.out.structures
-                .join(BOLTZ2_REFOLD.out.pae_npz, by: 0)
+                .combine(BOLTZ2_REFOLD.out.pae_npz, by: 0)
                 .flatMap { meta, cif_files, npz_files ->
                     // Convert to lists if single files
                     def cif_list = cif_files instanceof List ? cif_files : [cif_files]
                     def npz_list = npz_files instanceof List ? npz_files : [npz_files]
 
-                    // Filter to only model_0 (best model)
-                    cif_list = cif_list.findAll { it.name.endsWith('model_0.cif') }
-                    npz_list = npz_list.findAll { it.name.contains('model_0') }
+                    // Filter to only model_0 (best model) - use flexible matching
+                    def model0_cifs = cif_list.findAll { it.name.contains('model_0') && it.name.endsWith('.cif') }
+                    def model0_npzs = npz_list.findAll { it.name.contains('model_0') }
 
-                    // Create a map of basenames for matching
+                    // If no model_0 files found, use all files (fallback for different naming)
+                    if (model0_cifs.isEmpty()) {
+                        model0_cifs = cif_list.findAll { it.name.endsWith('.cif') }
+                    }
+                    if (model0_npzs.isEmpty()) {
+                        model0_npzs = npz_list
+                    }
+
+                    // Create a map of NPZ files by normalized base name
                     def npz_map = [:]
-                    npz_list.each { npz_file ->
-                        // Extract base name (without pae_ prefix)
-                        def base_name = npz_file.baseName.replaceAll(/^pae_/, '')
+                    model0_npzs.each { npz_file ->
+                        // Normalize: remove pae_ prefix and _model_X suffix for matching
+                        def base_name = npz_file.baseName
+                            .replaceAll(/^pae_/, '')
+                            .replaceAll(/_model_\d+$/, '')
                         npz_map[base_name] = npz_file
                     }
 
                     // Match CIF files with their NPZ files
-                    cif_list.collect { cif_file ->
-                        def base_name = cif_file.baseName
+                    model0_cifs.collect { cif_file ->
+                        // Normalize CIF name for matching
+                        def base_name = cif_file.baseName.replaceAll(/_model_\d+$/, '')
                         def npz_file = npz_map[base_name]
 
+                        // If exact match fails, try first NPZ file as fallback
+                        if (!npz_file && model0_npzs.size() == 1 && model0_cifs.size() == 1) {
+                            npz_file = model0_npzs[0]
+                        }
+
                         if (npz_file) {
-                            // Use simplified naming from Boltz2 meta directly
                             def ipsae_meta = [
                                 id: meta.id,
                                 parent_id: meta.parent_id,
@@ -261,10 +276,9 @@ workflow PROTEIN_DESIGN {
                                 seq_num: meta.seq_num,
                                 source: "boltz2"
                             ]
-
                             [ipsae_meta, npz_file, cif_file]
                         } else {
-                            log.warn "⚠️  No matching NPZ file found for ${cif_file.name}"
+                            log.warn "⚠️  No matching NPZ file found for ${cif_file.name} (available: ${model0_npzs*.name})"
                             null
                         }
                     }.findAll { it != null }
@@ -285,18 +299,22 @@ workflow PROTEIN_DESIGN {
         ch_prodigy_script = Channel.fromPath("${projectDir}/assets/parse_prodigy_output.py", checkIfExists: true).first()
         
         if (params.run_proteinmpnn && params.run_boltz2_refold) {
-            // Only use the best model (model_0) from each Boltz2 prediction
+            // Get CIF structures from Boltz-2 for PRODIGY
             ch_prodigy_input = BOLTZ2_REFOLD.out.structures
                 .flatMap { meta, cif_files ->
-                    // Convert to list if single file and create defensive copy
+                    // Convert to list if single file
                     def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
 
-                    // Filter to only model_0 (best model)
-                    cif_list = cif_list.findAll { it.name.endsWith('model_0.cif') }
+                    // Filter to only model_0 (best model) - use flexible matching
+                    def model0_cifs = cif_list.findAll { it.name.contains('model_0') && it.name.endsWith('.cif') }
+
+                    // If no model_0 files found, use all CIF files (fallback for different naming)
+                    if (model0_cifs.isEmpty()) {
+                        model0_cifs = cif_list.findAll { it.name.endsWith('.cif') }
+                    }
 
                     // Create a separate entry for each CIF file
-                    cif_list.collect { cif_file ->
-                        // Use simplified naming from Boltz2 meta directly
+                    model0_cifs.collect { cif_file ->
                         def design_meta = [
                             id: meta.id,
                             parent_id: meta.parent_id,
@@ -304,7 +322,6 @@ workflow PROTEIN_DESIGN {
                             seq_num: meta.seq_num,
                             source: "boltz2"
                         ]
-
                         [design_meta, cif_file]
                     }
                 }
@@ -335,14 +352,20 @@ workflow PROTEIN_DESIGN {
         // Process Boltz-2 refolded structures
         // ====================================================================
         if (params.run_proteinmpnn && params.run_boltz2_refold) {
-            // Only use the best model (model_0) from each Boltz2 prediction
+            // Get CIF structures from Boltz-2 for Foldseek
             ch_foldseek_input = BOLTZ2_REFOLD.out.structures
                 .flatMap { meta, cif_files ->
-                    // Convert to list if single file and create defensive copy
+                    // Convert to list if single file
                     def cif_list = cif_files instanceof List ? new ArrayList(cif_files) : [cif_files]
 
-                    // Filter to only model_0 (best model)
-                    cif_list = cif_list.findAll { it.name.endsWith('model_0.cif') }
+                    // Filter to only model_0 (best model) - use flexible matching
+                    def model0_cifs = cif_list.findAll { it.name.contains('model_0') && it.name.endsWith('.cif') }
+
+                    // If no model_0 files found, use all CIF files (fallback for different naming)
+                    if (model0_cifs.isEmpty()) {
+                        model0_cifs = cif_list.findAll { it.name.endsWith('.cif') }
+                    }
+                    cif_list = model0_cifs
 
                     // Create a separate entry for each CIF file
                     cif_list.collect { cif_file ->
