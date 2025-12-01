@@ -19,24 +19,52 @@ include { CONSOLIDATE_METRICS } from '../modules/local/consolidate_metrics'
 workflow PROTEIN_DESIGN {
 
     take:
-    ch_input         // channel: [meta, design_yaml, structure_files, target_msa, target_sequence, target_template]
+    ch_input         // channel: [meta, design_yaml, structure_files, target_msa, target_sequence, target_template, boltzgen_output_dir]
     ch_cache         // channel: path to cache directory or EMPTY_CACHE placeholder
     ch_boltz2_cache  // channel: path to Boltz-2 cache directory or EMPTY_BOLTZ2_CACHE placeholder
 
     main:
 
     // ========================================================================
-    // Run Boltzgen on design YAMLs
+    // Run Boltzgen on design YAMLs OR use pre-computed results
     // ========================================================================
 
-    // Prepare Boltzgen input by removing target_msa, target_sequence, and target_template (not needed for Boltzgen)
-    ch_boltzgen_input = ch_input
-        .map { meta, design_yaml, structure_files, target_msa, target_sequence, target_template ->
-            [meta, design_yaml, structure_files]
+    // Split input channel into two branches: with and without pre-computed Boltzgen results
+    ch_input
+        .branch { meta, design_yaml, structure_files, target_msa, target_sequence, target_template, boltzgen_output_dir ->
+            with_precomputed: boltzgen_output_dir != null
+                return [meta, boltzgen_output_dir]
+            needs_boltzgen: boltzgen_output_dir == null
+                return [meta, design_yaml, structure_files]
+        }
+        .set { ch_branched }
+
+    // Run Boltzgen only for samples without pre-computed results
+    BOLTZGEN_RUN(ch_branched.needs_boltzgen, ch_cache)
+    
+    // Create channel from pre-computed Boltzgen output directories
+    ch_precomputed_boltzgen = ch_branched.with_precomputed
+        .map { meta, boltzgen_dir ->
+            // Stage the pre-computed directory as if it came from BOLTZGEN_RUN
+            [meta, boltzgen_dir]
         }
     
-    // Run Boltzgen for each design in parallel
-    BOLTZGEN_RUN(ch_boltzgen_input, ch_cache)
+    // Combine Boltzgen results from both sources (newly run + pre-computed)
+    ch_boltzgen_results = BOLTZGEN_RUN.out.results
+        .mix(ch_precomputed_boltzgen)
+    
+    // Extract budget_design_cifs from both sources for downstream processing
+    ch_budget_cifs_new = BOLTZGEN_RUN.out.budget_design_cifs
+    
+    ch_budget_cifs_precomputed = ch_branched.with_precomputed
+        .map { meta, boltzgen_dir ->
+            // Extract budget design CIF files from pre-computed directory
+            def budget_cifs = file("${boltzgen_dir}/final_ranked_designs/final_*_designs/*.cif")
+            [meta, budget_cifs]
+        }
+    
+    ch_budget_design_cifs = ch_budget_cifs_new
+        .mix(ch_budget_cifs_precomputed)
     
     // ========================================================================
     // ProteinMPNN: Optimize sequences for designed structures
@@ -45,7 +73,8 @@ workflow PROTEIN_DESIGN {
         // Step 1: Convert CIF structures to PDB format (ProteinMPNN requires PDB)
         // Use budget_design_cifs which contains ONLY the budget designs (e.g., 2 structures if budget=2)
         // NOT all designs from results directory
-        CONVERT_CIF_TO_PDB(BOLTZGEN_RUN.out.budget_design_cifs)
+        // Use the combined channel that includes both newly computed and pre-computed Boltzgen results
+        CONVERT_CIF_TO_PDB(ch_budget_design_cifs)
         
         // Step 2: Parallelize ProteinMPNN - run separately for each budget design
         // Use flatMap to create individual tasks per PDB file (one per budget iteration)
@@ -179,7 +208,8 @@ workflow PROTEIN_DESIGN {
         }
     } else {
         // Use Boltzgen outputs directly if ProteinMPNN is disabled
-        ch_final_designs_for_analysis = BOLTZGEN_RUN.out.results
+        // Use the combined channel that includes both newly computed and pre-computed results
+        ch_final_designs_for_analysis = ch_boltzgen_results
     }
     
     // ========================================================================
@@ -398,9 +428,9 @@ workflow PROTEIN_DESIGN {
     }
 
     emit:
-    // Boltzgen outputs
-    boltzgen_results = BOLTZGEN_RUN.out.results
-    final_designs = BOLTZGEN_RUN.out.final_designs
+    // Boltzgen outputs (combined from both newly computed and pre-computed sources)
+    boltzgen_results = ch_boltzgen_results
+    final_designs = ch_budget_design_cifs
     
     // ProteinMPNN outputs (will be empty if not run)
     mpnn_optimized = params.run_proteinmpnn ? PROTEINMPNN_OPTIMIZE.out.optimized_designs : Channel.empty()

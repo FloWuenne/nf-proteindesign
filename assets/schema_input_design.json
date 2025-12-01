@@ -57,6 +57,10 @@
         "type": "string",
         "pattern": "^\\S+\\.cif$",
         "errorMessage": "Target template must be a valid file path to a CIF file (e.g., 'target_structure.cif')"
+      },
+      "boltzgen_output_dir": {
+        "type": "string",
+        "errorMessage": "Boltzgen output directory must be a valid directory path to pre-computed Boltzgen results (e.g., 'results/sample1/boltzgen/sample1_output')"
       }
     },
     "required": [

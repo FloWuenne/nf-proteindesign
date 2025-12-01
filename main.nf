@@ -99,7 +99,7 @@ workflow NFPROTEINDESIGN {
         .fromList(design_samplesheet)
         .map { tuple ->
             // samplesheetToList returns list of values in schema order
-            // Order: sample_id, design_yaml, structure_files, protocol, num_designs, budget, reuse, target_msa, target_sequence, target_template
+            // Order: sample_id, design_yaml, structure_files, protocol, num_designs, budget, reuse, target_msa, target_sequence, target_template, boltzgen_output_dir
             def sample_id = tuple[0]
             def design_yaml_path = tuple[1]
             def structure_files_str = tuple[2]
@@ -110,6 +110,7 @@ workflow NFPROTEINDESIGN {
             def target_msa_path = tuple.size() > 7 ? tuple[7] : null
             def target_sequence_path = tuple.size() > 8 ? tuple[8] : null
             def target_template_path = tuple.size() > 9 ? tuple[9] : null
+            def boltzgen_output_dir_path = tuple.size() > 10 ? tuple[10] : null
             
             // Convert design YAML to file object and validate existence
             // Smart path resolution: try launchDir first (for local runs), then projectDir (for Platform)
@@ -191,6 +192,21 @@ workflow NFPROTEINDESIGN {
                 }
             }
 
+            // Parse boltzgen_output_dir if provided
+            def boltzgen_output_dir = null
+            if (boltzgen_output_dir_path) {
+                if (boltzgen_output_dir_path.startsWith('/') || boltzgen_output_dir_path.contains('://')) {
+                    boltzgen_output_dir = file(boltzgen_output_dir_path, type: 'dir', checkIfExists: true)
+                } else {
+                    def launchDir_path = file(boltzgen_output_dir_path, type: 'dir')
+                    if (launchDir_path.exists()) {
+                        boltzgen_output_dir = launchDir_path
+                    } else {
+                        boltzgen_output_dir = file("${project_dir}/${boltzgen_output_dir_path}", type: 'dir', checkIfExists: true)
+                    }
+                }
+            }
+
             def meta = [:]
             meta.id = sample_id
             meta.protocol = protocol
@@ -198,7 +214,7 @@ workflow NFPROTEINDESIGN {
             meta.budget = budget
             meta.reuse = reuse ?: false
 
-            [meta, design_yaml, structure_files, target_msa, target_sequence, target_template]
+            [meta, design_yaml, structure_files, target_msa, target_sequence, target_template, boltzgen_output_dir]
         }
 
     // ========================================================================
